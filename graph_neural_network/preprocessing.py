@@ -8,6 +8,16 @@ import dgl
 import os
 
 def load_patient_and_case_data():
+  """Load patient information and infection case (cluter) data frame.
+  
+  Returns
+  -------
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+
+  case_df: pd.DataFrame shape of (n_cases, n_features_of_case)
+    The information about infection cases (cluster).
+  """
   filedir = os.path.dirname(__file__) + '/data/'
   patient_info_df = pd.read_csv(filedir + 'PatientInfo.csv')
   case_df = pd.read_csv(filedir + 'Case.csv')
@@ -21,11 +31,13 @@ def load_patient_and_case_data():
                                             'infection_case': 'category'})
   patient_info_df = patient_info_df.reset_index(drop=True)
 
-  # Syncronize code between patient_info_df and case_df
+  # Synchronize code between patient_info_df and case_df
   case_df = case_df.astype({'province': 'category',
                             'infection_case': 'category'})
-  case_df['province'].cat.set_categories(patient_info_df['province'].cat.categories, inplace=True)
-  patient_info_df['infection_case'].cat.set_categories(case_df['infection_case'].cat.categories, inplace=True)
+  case_df['province'].cat.set_categories(patient_info_df['province'].cat.categories,
+                                         inplace=True)
+  patient_info_df['infection_case'].cat.set_categories(case_df['infection_case'].cat.categories,
+                                                       inplace=True)
 
   # Delete unknown value between patient_info_df and case_df
   # patient_info_df = patient_info_df[patient_info_df['infection_case'].cat.codes != -1]
@@ -34,6 +46,19 @@ def load_patient_and_case_data():
   return patient_info_df, case_df
 
 def get_patent_patient_matrix(patient_info_df):
+  """Create patient - infected by - patient matrix.
+  
+  Parameters
+  ----------
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+
+  Returns
+  -------
+  matrix: scipy sparse COO matrix of shape (n_patients, n_patients)
+    Matrix of relationship between pair of patients
+    1 indicates that a patient infected the other patient.
+  """
   related_features = ['patient_id', 'infected_by']
   patient_info_df = patient_info_df[related_features]
   infection_rel = patient_info_df[~patient_info_df['infected_by'].isna()]
@@ -45,8 +70,9 @@ def get_patent_patient_matrix(patient_info_df):
     u = infection_rel[infection_rel['patient_id'] == pid]['patient_id'].cat.codes.values[0]
     infected_by_pids = [int(i) for i in infection_rel.iloc[i, 1].split(',')]
     for ibpid in infected_by_pids:
-      if len(patient_info_df[patient_info_df['patient_id'] == ibpid]) != 0: # Check existance of user in the dataset.
-        # Get code of patient
+      if len(patient_info_df[patient_info_df['patient_id'] == ibpid]) != 0:
+        # Check existance of user in the dataset.
+        # Get code of patient.
         v = patient_info_df[patient_info_df['patient_id'] == ibpid]['patient_id'].cat.codes.values[0]
         uids.append(u)
         vids.append(v)
@@ -55,10 +81,25 @@ def get_patent_patient_matrix(patient_info_df):
   assert len(uids) == len(vids) == 1340
 
   # Adjacency matrix for patient - infected by - patient relationship.
-  p_infected_by_p = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(patient_info_df.shape[0], patient_info_df.shape[0]))
+  p_infected_by_p = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                                  shape=(patient_info_df.shape[0], patient_info_df.shape[0]))
   return p_infected_by_p
 
 def get_patient_province_matrix(patient_info_df):
+  """Create patient - province matrix.
+  
+  Parameters
+  ----------
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+
+  Returns
+  -------
+  matrix: scipy sparse COO matrix of shape (n_patients, n_provinces)
+    Matrix of relationship between pair of patient and province.
+    1 indicates that a patient lives in a province.
+  """
+
   related_features = ['patient_id', 'province']
   patient_info_df = patient_info_df[related_features]
   n_patients = patient_info_df.shape[0]
@@ -73,10 +114,28 @@ def get_patient_province_matrix(patient_info_df):
     uids.append(u)
     vids.append(v)
 
-  p_lives_in_p = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_patients, n_provinces))
+  p_lives_in_p = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                               shape=(n_patients, n_provinces))
   return p_lives_in_p
 
 def get_infection_case_province_matrix(case_df, patient_info_df):
+  """Create infection case - province matrix
+
+  Parameters
+  ----------
+  case_df: pd.DataFrame shape of (n_cases, n_features_of_case)
+    The information about infection cases (cluster).
+
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+  
+  Returns
+  -------
+  matrix: scipy sparse COO matrix of shape (n_infection_cases, n_provinces)
+    Matrix of relationship between pair of case (cluster) and province.
+    1 indicates that a cluster occurs in a province.
+  """
+
   n_infection_cases = len(case_df['infection_case'].cat.categories)
   n_provinces = len(patient_info_df['province'].cat.categories)
   uids = []
@@ -90,10 +149,27 @@ def get_infection_case_province_matrix(case_df, patient_info_df):
       uids.append(u)
       vids.append(v)
 
-  infection_case_in_province = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_infection_cases, n_provinces))
+  infection_case_in_province = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                                             shape=(n_infection_cases, n_provinces))
   return infection_case_in_province
 
 def get_patient_infection_case_matrix(case_df, patient_info_df):
+  """Create patient - infection case matrix
+
+  Parameters
+  ----------
+  case_df: pd.DataFrame shape of (n_cases, n_features_of_case)
+    The information about infection cases (cluster).
+  
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+  
+  Returns
+  -------
+  matrix: scipy sparse COO matrix of shape (n_patients, n_infection_cases)
+    Matrix of relationship between pair of patient and infection case.
+    1 indicates that a patient relates to a cluster.
+  """
   n_patients = patient_info_df.shape[0]
   n_infection_cases = len(case_df['infection_case'].cat.categories)
   uids = []
@@ -107,18 +183,47 @@ def get_patient_infection_case_matrix(case_df, patient_info_df):
       uids.append(u)
       vids.append(v)
 
-  patient_related_to_case = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_patients, n_infection_cases))
+  patient_related_to_case = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                                          shape=(n_patients, n_infection_cases))
   return patient_related_to_case
 
 def get_city_province_matrix(case_df, patient_info_df):
+  """Create patient - infection case matrix
+
+  Parameters
+  ----------
+  case_df: pd.DataFrame shape of (n_cases, n_features_of_case)
+    The information about infection cases (cluster).
+  
+  patient_info_df: pd.DataFrame shape of (n_patients, n_features_of_patient)
+    The information about patients.
+  
+  Returns
+  -------
+  city_located_in_province: scipy sparse COO matrix of shape (n_cities, n_provinces)
+    Matrix of relationship between pair of city and province.
+    1 indicates that a city locates in a province.
+  
+  patient_lives_in_city: scipy sparse COO matrix of shape (n_patients, n_cities)
+    Matrix of relationship between pair of patient and city.
+    1 indicates that a patient lives in a city.
+  
+  case_in_city: scipy sparse COO matrix of shape (n_infection_cases, n_cities)
+    Matrix of relationship between pair of infection case and city.
+    1 indicates that a infection case (cluster) occurs in a city.
+  """
+
   tmp_city = patient_info_df[~patient_info_df['city'].isna()][['patient_id', 'province', 'city']].reset_index(drop=True)
-  tmp_city['province_city'] = tmp_city[['province', 'city']].apply(lambda x: x[0] + ', ' + x[1], axis=1)
+  tmp_city['province_city'] = tmp_city[['province', 'city']].apply(lambda x: x[0] + ', ' + x[1],
+                                                                   axis=1)
   tmp_city = tmp_city.astype({'province_city': 'category'})
 
   tmp_case_city = case_df[~case_df['city'].isna()][['infection_case', 'province', 'city']]
-  tmp_case_city['province_city'] = tmp_case_city[['province', 'city']].apply(lambda x: x[0] + ', ' + x[1], axis=1)
+  tmp_case_city['province_city'] = tmp_case_city[['province', 'city']].apply(lambda x: x[0] + ', ' + x[1],
+                                                                             axis=1)
   tmp_case_city = tmp_case_city.astype({'province_city': 'category'})
-  tmp_case_city['province_city'].cat.set_categories(tmp_city['province_city'].cat.categories, inplace=True)
+  tmp_case_city['province_city'].cat.set_categories(tmp_city['province_city'].cat.categories,
+                                                    inplace=True)
 
   n_cities = len(tmp_city['province_city'].cat.categories)
   n_provinces = len(patient_info_df['province'].cat.categories)
@@ -139,7 +244,8 @@ def get_city_province_matrix(case_df, patient_info_df):
       uids.append(u)
       vids.append(v)
 
-  city_located_in_province = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_cities, n_provinces))
+  city_located_in_province = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                                           shape=(n_cities, n_provinces))
 
   # Patient - City
   uids = []
@@ -153,7 +259,8 @@ def get_city_province_matrix(case_df, patient_info_df):
       uids.append(u)
       vids.append(v)
 
-  patient_lives_in_city = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_patients, n_cities))
+  patient_lives_in_city = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                                        shape=(n_patients, n_cities))
 
   # Infection case - City
   uids = []
@@ -167,7 +274,8 @@ def get_city_province_matrix(case_df, patient_info_df):
       uids.append(u)
       vids.append(v)
 
-  case_in_city = sp.coo_matrix((np.ones(len(uids)), (uids, vids)), shape=(n_infection_cases, n_cities))
+  case_in_city = sp.coo_matrix((np.ones(len(uids)), (uids, vids)),
+                               shape=(n_infection_cases, n_cities))
   
   return city_located_in_province, patient_lives_in_city, case_in_city
 
@@ -176,7 +284,7 @@ def get_training_data(patient_related_to_case,
                       include_rest=False,
                       include_unlabel=False):
   """
-  Getting patient index and label of infection case
+  Getting patient index and label of infection case.
 
   Parameters
   ----------
@@ -186,10 +294,10 @@ def get_training_data(patient_related_to_case,
   infection_cases_select : array, default=[76, 80, 77, 34, 50, 26, 62, 6, 71, 10]
     Sequence number of infection case to be selected. Default is top-10 popular cases.
 
-  include_rest : boolean, default=False
+  include_rest : boolean, default: False
     Including all infrequent cases as a new class.
 
-  include_unlabel : boolean, default=False
+  include_unlabel : boolean, default: False
     Including unknown case as a new class.
 
   Returns
@@ -227,13 +335,39 @@ def get_training_data(patient_related_to_case,
   return patient_idx, labels
 
 def get_heterogeneous_graph(include_rest=False, include_unlabel=False):
+  """
+  Get hetorogenous graph for training a GNN.
+
+  Parameters
+  ----------
+  include_rest: boolean, default: False
+    Including all infrequent cases as a new class.
+
+  include_unlabel: boolean, default: False
+    Including unknown case as a new class.
+
+  Returns
+  -------
+  G: DGL Heterograph
+    Graph data structure, including different types of nodes and relationships.
+
+  patient_idx : 1D numpy array of shape (n_selected_patients,)
+    Indices of selected patients.
+  
+  labels: 1D numpy array of shape (n_patients,)
+    Labels of selected patients. Labels of unselected patients are marked as -1.
+  """
   patient_info_df, case_df = load_patient_and_case_data()
   p_infected_by_p = get_patent_patient_matrix(patient_info_df)
   p_lives_in_p = get_patient_province_matrix(patient_info_df)
-  infection_case_in_province = get_infection_case_province_matrix(case_df, patient_info_df)
-  patient_related_to_case = get_patient_infection_case_matrix(case_df, patient_info_df)
+  infection_case_in_province = get_infection_case_province_matrix(case_df,
+                                                                  patient_info_df)
+  patient_related_to_case = get_patient_infection_case_matrix(case_df,
+                                                              patient_info_df)
   city_located_in_province, patient_lives_in_city, case_in_city = get_city_province_matrix(case_df, patient_info_df)
-  patient_idx, labels = get_training_data(patient_related_to_case, include_rest=include_rest, include_unlabel=include_unlabel)
+  patient_idx, labels = get_training_data(patient_related_to_case,
+                                          include_rest=include_rest,
+                                          include_unlabel=include_unlabel)
 
   G = dgl.heterograph({
     ('patient', 'infected_by', 'patient'): p_infected_by_p,
